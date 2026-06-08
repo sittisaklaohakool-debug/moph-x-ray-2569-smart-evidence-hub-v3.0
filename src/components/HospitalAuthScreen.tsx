@@ -26,6 +26,33 @@ export default function HospitalAuthScreen({ onAuthSuccess, onAdminSuccess, onAu
 
   const [upline, setUpline] = useState<string>("auditor");
 
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem("moph_remember_me") !== "false";
+  });
+
+  // Sync remembered credentials when activeTab or rememberMe changes
+  useEffect(() => {
+    if (rememberMe) {
+      let savedCode = "";
+      let savedPassword = "";
+      if (activeTab === "login" || activeTab === "register") {
+        savedCode = localStorage.getItem("moph_remembered_hospital_code") || "";
+        savedPassword = localStorage.getItem("moph_remembered_hospital_password") || "";
+      } else if (activeTab === "auditor") {
+        savedCode = localStorage.getItem("moph_remembered_auditor_username") || "";
+        savedPassword = localStorage.getItem("moph_remembered_auditor_password") || "";
+      } else if (activeTab === "admin") {
+        savedCode = localStorage.getItem("moph_remembered_admin_username") || "";
+        savedPassword = localStorage.getItem("moph_remembered_admin_password") || "";
+      }
+      setCode(savedCode);
+      setPassword(savedPassword);
+    } else {
+      setCode("");
+      setPassword("");
+    }
+  }, [activeTab, rememberMe]);
+
   // Automatically switch tab based on URL parameters or hashes for separate link entries
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -113,6 +140,28 @@ export default function HospitalAuthScreen({ onAuthSuccess, onAdminSuccess, onAu
       const data = await res.json();
 
       if (res.ok) {
+        if (rememberMe) {
+          localStorage.setItem("moph_remember_me", "true");
+          if (activeTab === "login" || activeTab === "register") {
+            localStorage.setItem("moph_remembered_hospital_code", trimmedCode);
+            localStorage.setItem("moph_remembered_hospital_password", trimmedPassword);
+          } else if (activeTab === "auditor") {
+            localStorage.setItem("moph_remembered_auditor_username", trimmedCode);
+            localStorage.setItem("moph_remembered_auditor_password", trimmedPassword);
+          } else if (activeTab === "admin") {
+            localStorage.setItem("moph_remembered_admin_username", trimmedCode);
+            localStorage.setItem("moph_remembered_admin_password", trimmedPassword);
+          }
+        } else {
+          localStorage.setItem("moph_remember_me", "false");
+          localStorage.removeItem("moph_remembered_hospital_code");
+          localStorage.removeItem("moph_remembered_hospital_password");
+          localStorage.removeItem("moph_remembered_auditor_username");
+          localStorage.removeItem("moph_remembered_auditor_password");
+          localStorage.removeItem("moph_remembered_admin_username");
+          localStorage.removeItem("moph_remembered_admin_password");
+        }
+
         if (activeTab === "admin") {
           // Double verify credentials and store
           sessionStorage.setItem("moph_admin_creds", JSON.stringify({ username: trimmedCode, password: trimmedPassword }));
@@ -315,6 +364,9 @@ export default function HospitalAuthScreen({ onAuthSuccess, onAdminSuccess, onAu
                   </span>
                   <input
                     type="text"
+                    id="moph-username"
+                    name="username"
+                    autocomplete="username"
                     required
                     value={code}
                     onChange={(e) => setCode(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
@@ -329,6 +381,9 @@ export default function HospitalAuthScreen({ onAuthSuccess, onAdminSuccess, onAu
                   </span>
                   <input
                     type="text"
+                    id="moph-username"
+                    name="username"
+                    autocomplete="username"
                     required
                     value={code}
                     onChange={(e) => setCode(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
@@ -341,6 +396,9 @@ export default function HospitalAuthScreen({ onAuthSuccess, onAdminSuccess, onAu
                   <User className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 select-none" />
                   <input
                     type="text"
+                    id="moph-username"
+                    name="username"
+                    autocomplete="username"
                     required
                     value={code}
                     onChange={(e) => setCode(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
@@ -407,6 +465,9 @@ export default function HospitalAuthScreen({ onAuthSuccess, onAdminSuccess, onAu
               <Key className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
               <input
                 type="password"
+                id="moph-password"
+                name="password"
+                autocomplete={activeTab === "register" ? "new-password" : "current-password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -422,14 +483,24 @@ export default function HospitalAuthScreen({ onAuthSuccess, onAdminSuccess, onAu
             </div>
           </div>
 
-          {/* Forgot Password Helper Notice */}
-          {activeTab === "login" && (
-            <div className="text-right p-1 rounded">
-              <span className="text-[10px] text-gray-600 font-sans italic block leading-relaxed hover:text-[#5A5A40] transition-colors">
-                🔑 กรณีลืมรหัสผ่านติดต่อแอดมิน: <strong className="text-stone-800 bg-stone-100 px-1.5 py-0.5 rounded font-mono select-all">xraymaetha@gmail.com</strong>
+          {/* 💡 Remember Me Checkbox & Forgot Password Helper Notice */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-[11px] text-gray-600 hover:text-gray-850 select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-[#5A5A40] focus:ring-[#5A5A40] cursor-pointer"
+              />
+              <span className="font-sans font-bold">จดจำข้อมูลเพื่อล็อกอินในเครื่องนี้</span>
+            </label>
+
+            {activeTab === "login" && (
+              <span className="text-[10px] text-gray-600 font-sans italic block sm:text-right">
+                🔑 ติดต่อแอดมิน: <strong className="text-stone-800 bg-stone-50 px-1 py-0.5 rounded border border-gray-200 font-mono select-all">xraymaetha@gmail.com</strong>
               </span>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Action Button */}
           <button

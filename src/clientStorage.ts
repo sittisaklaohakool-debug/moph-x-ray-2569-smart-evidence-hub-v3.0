@@ -128,7 +128,8 @@ function mergeWithLatestSOP(loadedItems: AssessmentItem[]): AssessmentItem[] {
   if (!Array.isArray(loadedItems)) {
     return initialAssessmentsSanitized;
   }
-  return initialAssessmentsSanitized.map((latestItem) => {
+  const standardIds = new Set(initialAssessmentsSanitized.map(it => it.Item_ID));
+  const standardMerged = initialAssessmentsSanitized.map((latestItem) => {
     const counterpart = loadedItems.find((li) => li.Item_ID === latestItem.Item_ID);
     if (!counterpart) {
       return { ...latestItem };
@@ -142,6 +143,10 @@ function mergeWithLatestSOP(loadedItems: AssessmentItem[]): AssessmentItem[] {
       Last_Update: counterpart.Last_Update || latestItem.Last_Update
     };
   });
+  
+  // Keep custom items (which do not belong to the static standard template)
+  const customItems = loadedItems.filter(li => li && li.Item_ID && !standardIds.has(li.Item_ID));
+  return [...standardMerged, ...customItems];
 }
 
 function readAllSheets(hospitalCode: string): Record<string, AssessmentItem[]> {
