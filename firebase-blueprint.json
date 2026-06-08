@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "Hospital": {
+      "title": "Hospital",
+      "description": "Hospital record in the system",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "originalCode": { "type": "string" },
+        "name": { "type": "string" },
+        "password": { "type": "string" },
+        "upline": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["code", "name", "password"]
+    },
+    "Auditor": {
+      "title": "Auditor",
+      "description": "Auditor account for system entry",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "password": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["username", "name", "password"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Central or local administrator account",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "password": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["username", "name", "password"]
+    },
+    "AssessmentItem": {
+      "title": "AssessmentItem",
+      "description": "Standard or custom assessment item",
+      "type": "object",
+      "properties": {
+        "Item_ID": { "type": "string" },
+        "Main_Category": { "type": "string" },
+        "Sub_Category": { "type": "string" },
+        "Criteria_Detail": { "type": "string" },
+        "Success_Indicator": { "type": "string" },
+        "Status": { "type": "string" },
+        "Responsible_Person": { "type": "string" },
+        "Evidence_Link": {
+          "type": "array"
+        },
+        "Auditor_Comment": { "type": "string" },
+        "Last_Update": { "type": "string" }
+      },
+      "required": ["Item_ID", "Main_Category", "Status"]
+    },
+    "SheetList": {
+      "title": "SheetList",
+      "description": "A document tracking list of active sheets (years) for a hospital",
+      "type": "object",
+      "properties": {
+        "sheets": {
+          "type": "array"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/hospitals/{hospitalCode}": {
+      "schema": "Hospital",
+      "description": "Registered hospitals list"
+    },
+    "/auditors/{auditorId}": {
+      "schema": "Auditor",
+      "description": "Auditors list"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "System admins list"
+    },
+    "/hospitals/{hospitalCode}/sheet_meta/list": {
+      "schema": "SheetList",
+      "description": "List of sheet names (assessment years)"
+    },
+    "/hospitals/{hospitalCode}/sheets/{sheetName}/items/{itemId}": {
+      "schema": "AssessmentItem",
+      "description": "Individual assessment item stored for a specific sheet and hospital"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper validation
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    // 2. Hospitals Collection
+    match /hospitals/{hospitalCode} {
+      allow read: if true;
+      allow write: if isValidId(hospitalCode);
+    }
+
+    // 3. Auditors Collection
+    match /auditors/{auditorId} {
+      allow read: if true;
+      allow write: if isValidId(auditorId);
+    }
+
+    // 4. Admins Collection
+    match /admins/{adminId} {
+      allow read: if true;
+      allow write: if isValidId(adminId);
+    }
+
+    // 5. Sheet Meta Lists
+    match /hospitals/{hospitalCode}/sheet_meta/list {
+      allow read, write: if isValidId(hospitalCode);
+    }
+
+    // 6. Assessment Sub-items
+    match /hospitals/{hospitalCode}/sheets/{sheetName}/items/{itemId} {
+      allow read: if isValidId(hospitalCode);
+      allow write: if isValidId(hospitalCode);
+    }
+  }
+}
