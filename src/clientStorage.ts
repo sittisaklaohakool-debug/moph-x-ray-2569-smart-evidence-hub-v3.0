@@ -866,6 +866,29 @@ export async function clientFetch(input: RequestInfo | URL, init?: RequestInit):
         return jsonResponse({ success: true, count: items.length });
       }
 
+      // 25.5 OVERWRITE ALL ASSESSMENTS FOR BULK MODIFICATIONS (POST)
+      if (pathname === "/api/assessments/set-all" && method === "POST") {
+        const { items, activeSheetName } = body;
+        const sheetName = activeSheetName || "ปี 2569";
+        if (!Array.isArray(items)) {
+          return errorResponse("รูปแบบข้อมูลที่ส่งมาไม่ถูกต้อง (ต้องเป็นอาเรย์)");
+        }
+        const sanitizedItems = items.map((imported: any) => ({
+          Main_Category: sanitizeCategory(imported.Main_Category) || "อื่นๆ",
+          Sub_Category: imported.Sub_Category || "",
+          Item_ID: imported.Item_ID,
+          Criteria_Detail: imported.Criteria_Detail || "",
+          Success_Indicator: imported.Success_Indicator || "",
+          Status: imported.Status || "🔴 ยังไม่พร้อม",
+          Responsible_Person: imported.Responsible_Person || "",
+          Evidence_Link: Array.isArray(imported.Evidence_Link) ? imported.Evidence_Link : [],
+          Auditor_Comment: imported.Auditor_Comment || "",
+          Last_Update: imported.Last_Update || new Date().toISOString()
+        }));
+        writeAssessments(sanitizedItems, sheetName, hospitalCodeFromHeader);
+        return jsonResponse({ success: true, count: sanitizedItems.length });
+      }
+
       // 26. GEMINI ADVISOR SMART COACH (POST)
       if (pathname === "/api/gemini/advisor" && method === "POST") {
         // Fallback or Standby AI response for zero-servers GitHub Pages compliance

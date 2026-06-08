@@ -112,6 +112,28 @@ export default function App() {
   const [showCreateSheetModal, setShowCreateSheetModal] = useState<boolean>(false);
   const [newSheetNameInput, setNewSheetNameInput] = useState<string>("ปี 2570");
 
+  // Category and sub-items management states
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState<boolean>(false);
+  const [newCategoryName, setNewCategoryName] = useState<string>("");
+  const [showEditCategoryModal, setShowEditCategoryModal] = useState<boolean>(false);
+  const [editCategoryOldName, setEditCategoryOldName] = useState<string>("");
+  const [editCategoryNewName, setEditCategoryNewName] = useState<string>("");
+
+  const [showAddItemModal, setShowAddItemModal] = useState<boolean>(false);
+  const [newItemCategory, setNewItemCategory] = useState<string>("");
+  const [newItemSubCategory, setNewItemSubCategory] = useState<string>("");
+  const [newItemID, setNewItemID] = useState<string>("");
+  const [newItemCriteria, setNewItemCriteria] = useState<string>("");
+  const [newItemSuccess, setNewItemSuccess] = useState<string>("");
+
+  const [showEditItemModal, setShowEditItemModal] = useState<boolean>(false);
+  const [editingItemID, setEditingItemID] = useState<string>("");
+  const [editItemCategory, setEditItemCategory] = useState<string>("");
+  const [editItemSubCategory, setEditItemSubCategory] = useState<string>("");
+  const [editItemID, setEditItemID] = useState<string>("");
+  const [editItemCriteria, setEditItemCriteria] = useState<string>("");
+  const [editItemSuccess, setEditItemSuccess] = useState<string>("");
+
   // Custom Confirmation & Toast Banner States
   const [toast, setToast] = useState<{
     show: boolean;
@@ -460,6 +482,269 @@ export default function App() {
       true, // isDanger
       "ยืนยันล้างข้อมูลหลัก",
       "ยกเลิก"
+    );
+  };
+
+  // 📁 Manage Categories & Checklist Sub-Items (ข้อย่อย)
+  const handleCreateCategory = async (newCatName: string) => {
+    const trimmed = newCatName.trim();
+    if (!trimmed) {
+      showToast("กรุณาระบุชื่อหมวดหมู่ด้วยค่ะ", "error");
+      return;
+    }
+    const currentCats = [...new Set(assessments.map(item => item?.Main_Category || "ไม่ระบุหมวด"))];
+    if (currentCats.includes(trimmed)) {
+      showToast("หมวดหมู่นี้มีอยู่ในระบบแล้วค่ะ", "error");
+      return;
+    }
+    // Add a placeholder item
+    const placeholderItem: AssessmentItem = {
+      Main_Category: trimmed,
+      Sub_Category: "ข้อกำหนดหลัก",
+      Item_ID: `custom-${Date.now()}`,
+      Criteria_Detail: "เกณฑ์ประเมินเริ่มต้น (สามารถกดเพื่อแก้ไขระบุข้อกำหนดจริงได้)",
+      Success_Indicator: "ระบุเป้าหมายความสำเร็จของเกณฑ์ข้อนี้",
+      Status: "🔴 ยังไม่พร้อม",
+      Responsible_Person: "",
+      Evidence_Link: [],
+      Auditor_Comment: "",
+      Last_Update: new Date().toISOString()
+    };
+    const updated = [...assessments, placeholderItem];
+    
+    try {
+      const res = await fetch("/api/assessments/set-all", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ items: updated, activeSheetName })
+      });
+      if (res.ok) {
+        setAssessments(updated);
+        setSelectedCategoryFilter(trimmed);
+        setSelectedId(placeholderItem.Item_ID);
+        showToast(`➕ สร้างหมวดหมู่ "${trimmed}" สำเร็จแล้ว!`, "success");
+        setShowAddCategoryModal(false);
+        setNewCategoryName("");
+      } else {
+        showToast("ไม่สามารถสร้างหมวดหมู่ใหม่ได้", "error");
+      }
+    } catch (e: any) {
+      showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ: " + e.message, "error");
+    }
+  };
+
+  const handleRenameCategory = async (oldName: string, newName: string) => {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew) {
+      showToast("กรุณากรอกชื่อหมวดใหม่", "error");
+      return;
+    }
+    if (trimmedNew === oldName) {
+      setShowEditCategoryModal(false);
+      return;
+    }
+    const updated = assessments.map(item => {
+      if (item.Main_Category === oldName) {
+        return { ...item, Main_Category: trimmedNew };
+      }
+      return item;
+    });
+
+    try {
+      const res = await fetch("/api/assessments/set-all", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ items: updated, activeSheetName })
+      });
+      if (res.ok) {
+        setAssessments(updated);
+        setSelectedCategoryFilter(trimmedNew);
+        showToast(`✏️ เปลี่ยนชื่อหมวดเป็น "${trimmedNew}" เรียบร้อยแล้ว`, "success");
+        setShowEditCategoryModal(false);
+      } else {
+        showToast("ไม่สามารถแก้ไขชื่อหมวดหมู่ได้", "error");
+      }
+    } catch (e: any) {
+      showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ: " + e.message, "error");
+    }
+  };
+
+  const handleDeleteCategory = (catName: string) => {
+    triggerConfirm(
+      "🗑️ ยินยอมลบหมวดหมู่ประเมินหรือไม่?",
+      `คุณแน่ใจว่าต้องการลบหมวด "${catName}" และข้อย่อยในหมวดนี้ทั้งหมดใช่หรือไม่?\n\n(ขั้นตอนนี้จะไม่สามารถย้อนกลับคืนข้อมูลได้)`,
+      async () => {
+        const updated = assessments.filter(item => item.Main_Category !== catName);
+        try {
+          const res = await fetch("/api/assessments/set-all", {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({ items: updated, activeSheetName })
+          });
+          if (res.ok) {
+            setAssessments(updated);
+            setSelectedCategoryFilter("ทั้งหมด");
+            setSelectedId(updated.length > 0 ? updated[0].Item_ID : null);
+            showToast(`🗑️ ลบหมวดหมู่และเกณฑ์ประเมินที่เกี่ยวข้องออกหมดแล้ว`, "success");
+          } else {
+            showToast("ไม่สามารถลบหมวดหมู่ได้", "error");
+          }
+        } catch (e: any) {
+          showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ: " + e.message, "error");
+        }
+      },
+      true // isDanger
+    );
+  };
+
+  const handleCreateItem = async (
+    category: string,
+    subCategory: string,
+    itemId: string,
+    criteria: string,
+    success: string
+  ) => {
+    const trimmedId = itemId.trim();
+    const trimmedCriteria = criteria.trim();
+    const trimmedCat = category.trim();
+    if (!trimmedCat) {
+      showToast("กรุณาเลือกหรือระบุหมวดหมู่หลัก", "error");
+      return;
+    }
+    if (!trimmedId || !trimmedCriteria) {
+      showToast("กรุณาระบุรหัสข้อเกณฑ์และเนื้อหาเกณฑ์ทั้งหมด", "error");
+      return;
+    }
+    // Check if ID already exists
+    if (assessments.some(item => item.Item_ID === trimmedId)) {
+      showToast(`รหัสเกณฑ์ประเมินสำเร็จ (Item_ID) "${trimmedId}" ซ้ำกับรายการที่มีอยู่แล้วในระบบ`, "error");
+      return;
+    }
+
+    const newItem: AssessmentItem = {
+      Main_Category: trimmedCat,
+      Sub_Category: subCategory.trim() || "ตรวจสอบย่อย",
+      Item_ID: trimmedId,
+      Criteria_Detail: trimmedCriteria,
+      Success_Indicator: success.trim(),
+      Status: "🔴 ยังไม่พร้อม",
+      Responsible_Person: "",
+      Evidence_Link: [],
+      Auditor_Comment: "",
+      Last_Update: new Date().toISOString()
+    };
+
+    const updated = [...assessments, newItem];
+    try {
+      const res = await fetch("/api/assessments/set-all", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ items: updated, activeSheetName })
+      });
+      if (res.ok) {
+        setAssessments(updated);
+        setSelectedId(trimmedId);
+        setSelectedCategoryFilter(trimmedCat);
+        showToast(`➕ เพิ่มข้อเกณฑ์ประเมิน "${trimmedId}" ลงในหมวด "${trimmedCat}" สำเร็จ!`, "success");
+        setShowAddItemModal(false);
+        // reset form state
+        setNewItemSubCategory("");
+        setNewItemID("");
+        setNewItemCriteria("");
+        setNewItemSuccess("");
+      } else {
+        showToast("ไม่สามารถสร้างเกณฑ์ประเมินใหม่ได้", "error");
+      }
+    } catch (e: any) {
+      showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ", "error");
+    }
+  };
+
+  const handleUpdateItemDefinition = async (
+    oldId: string,
+    newId: string,
+    category: string,
+    subCategory: string,
+    criteria: string,
+    success: string
+  ) => {
+    const trimmedNewId = newId.trim();
+    const trimmedCriteria = criteria.trim();
+    const trimmedCat = category.trim();
+    if (!trimmedCat) {
+      showToast("กรุณาเลือกหมวดหลัก", "error");
+      return;
+    }
+    if (!trimmedNewId || !trimmedCriteria) {
+      showToast("กรุณากรอกรหัสและข้อกำหนดเกณฑ์ประเมิน", "error");
+      return;
+    }
+    if (trimmedNewId !== oldId && assessments.some(item => item.Item_ID === trimmedNewId)) {
+      showToast(`รหัสเกณฑ์ประเมินสำเร็จ "${trimmedNewId}" มีการใช้อยู่แล้วในระบบ`, "error");
+      return;
+    }
+
+    const updated = assessments.map(item => {
+      if (item.Item_ID === oldId) {
+        return {
+          ...item,
+          Item_ID: trimmedNewId,
+          Main_Category: trimmedCat,
+          Sub_Category: subCategory.trim() || item.Sub_Category,
+          Criteria_Detail: trimmedCriteria,
+          Success_Indicator: success.trim(),
+          Last_Update: new Date().toISOString()
+        };
+      }
+      return item;
+    });
+
+    try {
+      const res = await fetch("/api/assessments/set-all", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ items: updated, activeSheetName })
+      });
+      if (res.ok) {
+        setAssessments(updated);
+        setSelectedId(trimmedNewId);
+        showToast(`✏️ แก้ไขเนื้อหาข้อเกณฑ์มาตรฐาน "${trimmedNewId}" สำเร็จแล้ว!`, "success");
+        setShowEditItemModal(false);
+      } else {
+        showToast("ไม่สามารถบันทึกการแก้ไขเกณฑ์ข้อมูลหลักได้", "error");
+      }
+    } catch (e: any) {
+      showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ", "error");
+    }
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    triggerConfirm(
+      "🗑️ ยืนยันลบข้อประเมินมาตรฐานนี้?",
+      `คุณแน่ใจว่าต้องการลบเกณฑ์ประเมินรหัส "${itemId}" ออกจากระบบถาวรใช่หรือไม่?`,
+      async () => {
+        const updated = assessments.filter(item => item.Item_ID !== itemId);
+        try {
+          const res = await fetch("/api/assessments/set-all", {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({ items: updated, activeSheetName })
+          });
+          if (res.ok) {
+            setAssessments(updated);
+            const remainingForCat = updated.filter(item => item.Main_Category === selectedCategoryFilter);
+            if (selectedId === itemId) {
+              setSelectedId(remainingForCat.length > 0 ? remainingForCat[0].Item_ID : (updated.length > 0 ? updated[0].Item_ID : null));
+            }
+            showToast(`🗑️ ลบเกณฑ์ประเมินข้อ "${itemId}" สำเร็จแล้ว`, "success");
+          } else {
+            showToast("ไม่สามารถลบเกณฑ์ประเมินได้", "error");
+          }
+        } catch (e: any) {
+          showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ", "error");
+        }
+      },
+      true
     );
   };
 
@@ -1259,14 +1544,44 @@ export default function App() {
             {/* Header / Filter Toolbar */}
             <div className="p-4 bg-white border-b border-gray-150 space-y-3 shrink-0">
               
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 uppercase tracking-widest flex items-center gap-1.5">
-                  <Grid className="w-4 h-4 text-[#5A5A40]" />
-                  รายการข้อเกณฑ์การตรวจประเมิน
-                </span>
-                <span className="font-mono text-xs text-emerald-700 font-bold">
-                  แสดง {filteredAssessments.length} จาก {totalItems} ข้อ
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-gray-755 uppercase tracking-widest flex items-center gap-1.5">
+                    <Grid className="w-4 h-4 text-[#5A5A40]" />
+                    รายการข้อเกณฑ์การตรวจประเมิน
+                  </span>
+                  <span className="font-mono text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-150 px-2 py-0.5 rounded-full font-bold">
+                    แสดง {filteredAssessments.length}/{totalItems} ข้อ
+                  </span>
+                </div>
+
+                {/* ➕ Category & Item Manage Action buttons */}
+                <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                  <button
+                    onClick={() => {
+                      setNewCategoryName("");
+                      setShowAddCategoryModal(true);
+                    }}
+                    className="bg-[#5A5A40] text-white hover:bg-[#4a4a35] text-[11px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-xs transition-transform hover:scale-[1.02] cursor-pointer"
+                    title="สร้างหมวดการตรวจประเมินข้อใหม่"
+                  >
+                    <span>➕ เพิ่มหมวด</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setNewItemCategory(selectedCategoryFilter === "ทั้งหมด" ? (categoriesList[1] || "") : selectedCategoryFilter);
+                      setNewItemSubCategory("");
+                      setNewItemID("");
+                      setNewItemCriteria("");
+                      setNewItemSuccess("");
+                      setShowAddItemModal(true);
+                    }}
+                    className="bg-[#3a9668] hover:bg-[#2c7752] text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-xs transition-transform hover:scale-[1.02] cursor-pointer"
+                    title="สร้างข้อกำหนดเกณฑ์ประเมินย่อยภายในหมวดหลัก"
+                  >
+                    <span>➕ เพิ่มข้อย่อย</span>
+                  </button>
+                </div>
               </div>
 
               {/* Dynamic search input and status selector */}
@@ -1307,6 +1622,29 @@ export default function App() {
                 </div>
 
               </div>
+
+              {/* Category Management Banner (เมื่อเลือกหมวดใดหมวดหนึ่ง) */}
+              {selectedCategoryFilter !== "ทั้งหมด" && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-amber-50 border border-amber-200 text-amber-900 p-2.5 rounded-xl text-xs shadow-inner">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-amber-750 font-bold">📂 หมวดที่เลือก:</span>{" "}
+                    <span className="text-slate-900 font-extrabold">{getCleanCategoryNumRef(selectedCategoryFilter)}</span>
+                  </div>
+                  <div className="flex gap-1.5 justify-end">
+                    <button
+                      onClick={() => {
+                        setEditCategoryOldName(selectedCategoryFilter);
+                        setEditCategoryNewName(selectedCategoryFilter);
+                        setShowEditCategoryModal(true);
+                      }}
+                      className="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-200 font-bold px-2.5 py-1 rounded-md text-[10px] transition-colors cursor-pointer"
+                      title="แก้ไขชื่อหรือรหัสอ้างอิงของหมวดนี้"
+                    >
+                      ✏️ แก้ไขชื่อหมวด
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Horizontal Category Filtering Buttons (MOPH 9-Category Sidebar equivalents) */}
               <div className="flex items-center space-x-1.5 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-gray-200">
@@ -1421,11 +1759,23 @@ export default function App() {
                       </p>
 
                       {/* Footer Info inside list card item */}
-                      <div className="mt-3.5 pt-2.5 border-t border-gray-100 flex items-center justify-end text-[10px] text-gray-450">
+                      <div className="mt-3.5 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-gray-405" />
+                          <Clock className="w-3 h-3 text-gray-400" />
                           {safeFormatSimpleDate(item.Last_Update)}
                         </span>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation(); // prevent select action
+                            handleDeleteItem(item.Item_ID);
+                          }}
+                          className="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded transition-all flex items-center gap-1 font-bold font-sans cursor-pointer"
+                          title="ลบเกณฑ์ประเมินข้อนี้ออกจากหมวด"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>ลบข้อนี้</span>
+                        </button>
                       </div>
 
                     </div>
@@ -1455,19 +1805,44 @@ export default function App() {
               <div className="flex-1 flex flex-col min-h-0 bg-white">
                 
                 {/* Fixed Inspector Title Banner */}
-                <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between shrink-0">
+                <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between shrink-0 font-sans">
                   <div className="flex items-center space-x-2">
                     <span className="font-mono text-sm font-extrabold text-[#5A5A40] bg-white border border-gray-200 px-2.5 py-1 rounded">
                       {selectedItem.Item_ID}
                     </span>
                     <div>
                       <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">แผงจัดการข้อมูลหลักฐานประเมิน</h4>
-                      <p className="text-[10px] text-gray-500 truncate max-w-[200px]">
+                      <p className="text-[10px] text-gray-500 truncate max-w-[150px] sm:max-w-[200px]">
                         {selectedItem.Sub_Category}
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] text-gray-400 font-mono">Index 0-9</span>
+                  
+                  {/* Action buttons with edit definition and delete */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => {
+                        setEditingItemID(selectedItem.Item_ID);
+                        setEditItemCategory(selectedItem.Main_Category);
+                        setEditItemSubCategory(selectedItem.Sub_Category);
+                        setEditItemID(selectedItem.Item_ID);
+                        setEditItemCriteria(selectedItem.Criteria_Detail);
+                        setEditItemSuccess(selectedItem.Success_Indicator);
+                        setShowEditItemModal(true);
+                      }}
+                      className="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-200 font-bold px-2.5 py-1 rounded-md text-[10px] transition-all cursor-pointer flex items-center justify-center"
+                      title="แก้ไขเกณฑ์มาตรฐาน / ข้อกำหนดเป้าหมาย"
+                    >
+                      ✏️ แก้ไขเกณฑ์
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(selectedItem.Item_ID)}
+                      className="bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-200 font-bold px-2.5 py-1 rounded-md text-[10px] transition-all cursor-pointer flex items-center justify-center"
+                      title="ลบเกณฑ์มาตรฐานข้อนี้ออกถาวร"
+                    >
+                      🗑️ ลบข้อนี้
+                    </button>
+                  </div>
                 </div>
 
                 {/* Scrollable Form Workspace of active item */}
@@ -1750,6 +2125,377 @@ export default function App() {
                   className="px-4 py-2 text-xs font-bold text-white bg-[#5A5A40] hover:bg-[#4a4a35] rounded-lg cursor-pointer shadow-sm hover:shadow transition-all"
                 >
                   🚀 ยืนยันสร้างชุดประเมิน
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 📁 Modal สำหรับเพิ่มหมวดหมู่ใหม่ */}
+      <AnimatePresence>
+        {showAddCategoryModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs font-sans">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-gray-150 overflow-hidden font-sans"
+            >
+              <div className="bg-[#5A5A40] text-white p-5 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-amber-300" />
+                  <h3 className="font-bold text-sm">📁 เพิ่มหมวดสืบค้นใหม่ (Add Category)</h3>
+                </div>
+                <button
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="text-white/85 hover:text-white font-bold text-lg cursor-pointer px-1 outline-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 font-sans">
+                <p className="text-xs text-gray-500 leading-relaxed font-sans">
+                  สร้างหมวดหมู่การตรวจประเมินอัจฉริยะขึ้นใหม่ในแท็บ "{activeSheetName}" โดยระบบจะสร้างหมวดนี้พร้อมการสอดแทรกรายการข้อประเมินเริ่มต้น (Placeholder) เสมอ เพื่อการแสดงผลที่ถูกต้องในทุกแดชบอร์ดความพร้อม
+                </p>
+
+                <div className="space-y-1.5 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    ชื่อหมวดหมู่ (เช่น "10. หมวดการประเมินรังสีและสภาพความยืดหยุ่น")
+                  </label>
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="ป้อนตัวเลขนำหน้าตามเหมาะสมเพื่อความสอดคล้อง"
+                    className="w-full px-3.5 py-2 mx-auto block bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-bold font-sans focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleCreateCategory(newCategoryName);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-800 bg-white hover:bg-gray-150 rounded-lg border border-gray-250 cursor-pointer shadow-xs transition-colors font-sans"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCreateCategory(newCategoryName)}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#5A5A40] hover:bg-[#4a4a35] rounded-lg cursor-pointer shadow-sm hover:shadow transition-all font-sans"
+                >
+                  ➕ สร้างหมวดหมู่ใหม่
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ✏️ Modal สำหรับแก้ไขชื่อหมวดหมู่ */}
+      <AnimatePresence>
+        {showEditCategoryModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs font-sans">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-gray-150 overflow-hidden font-sans"
+            >
+              <div className="bg-[#5A5A40] text-white p-5 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-amber-300" />
+                  <h3 className="font-bold text-sm">✏️ แก้ไขชื่อหมวดหมู่ (Rename Category)</h3>
+                </div>
+                <button
+                  onClick={() => setShowEditCategoryModal(false)}
+                  className="text-white/85 hover:text-white font-bold text-lg cursor-pointer px-1 outline-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 font-sans focus-within:text-[#5A5A40]">
+                <p className="text-xs text-gray-500 leading-relaxed font-sans">
+                  การแก้ไขชื่อหมวด จะเปลี่ยนชื่อของหัวข้อคุมมาตรฐาน <span className="text-slate-900 font-extrabold">{editCategoryOldName}</span> ให้เป็นชื่อใหม่ทันที โดยมีผลต่อเกณฑ์ประเมินย่อยภายในหมวดนี้ทุกข้อในแท็บ "{activeSheetName}"
+                </p>
+
+                <div className="space-y-1.5 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    ชื่อหมวดหมู่ใหม่
+                  </label>
+                  <input
+                    type="text"
+                    value={editCategoryNewName}
+                    onChange={(e) => setEditCategoryNewName(e.target.value)}
+                    placeholder="แก้ไขรหัสหรือข้อความหมวดหมู่หลัก"
+                    className="w-full px-3.5 py-2 mx-auto block bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-bold font-sans focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleRenameCategory(editCategoryOldName, editCategoryNewName);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowEditCategoryModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-800 bg-white hover:bg-gray-150 rounded-lg border border-gray-250 cursor-pointer shadow-xs transition-colors font-sans"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRenameCategory(editCategoryOldName, editCategoryNewName)}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#5A5A40] hover:bg-[#4a4a35] rounded-lg cursor-pointer shadow-sm hover:shadow transition-all font-sans"
+                >
+                  💾 บันทึกเปลี่ยนชื่อ
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ➕ Modal สำหรับเพิ่มเกณฑ์ประเมิน / ข้อย่อยใหม่ */}
+      <AnimatePresence>
+        {showAddItemModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs font-sans">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-gray-150 overflow-hidden font-sans"
+            >
+              <div className="bg-[#5A5A40] text-white p-5 flex justify-between items-center bg-emerald-700">
+                <div className="flex items-center gap-2">
+                  <Grid className="w-5 h-5 text-emerald-300" />
+                  <h3 className="font-bold text-sm text-white">➕ เพิ่มชุดเกณฑ์และข้อย่อยใหม่ (Add Inspection Criteria)</h3>
+                </div>
+                <button
+                  onClick={() => setShowAddItemModal(false)}
+                  className="text-white/85 hover:text-white font-bold text-lg cursor-pointer px-1 outline-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto block text-left font-sans">
+                {/* Main Category Selector */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    หมวดหมู่หลัก (Main Category) <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={newItemCategory}
+                    onChange={(e) => setNewItemCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-850 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  >
+                    <option value="">-- กรุณาเลือกหมวดหมู่ --</option>
+                    {categoriesList.filter(c => c !== "ทั้งหมด").map((cat, cIdx) => (
+                      <option key={cIdx} value={cat}>{getCleanCategoryNumRef(cat)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sub-Category Name Input */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    หัวข้อย่อยหรือหัวข้อตรวจสอบ (Sub Category)
+                  </label>
+                  <input
+                    type="text"
+                    value={newItemSubCategory}
+                    onChange={(e) => setNewItemSubCategory(e.target.value)}
+                    placeholder="เช่น 'ทางเลือกระบบความปลอดภัย' หรือ 'บุคลากรทั่วไป'"
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {/* Item ID Input */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    รหัสเกณฑ์ประเมินสำเร็จ (Item ID) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newItemID}
+                    onChange={(e) => setNewItemID(e.target.value)}
+                    placeholder="ความสอดคล้องรหัส เช่น '1.1.4' หรือ '9.1.1' ควรรองรับการจัดเรียงได้"
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-bold font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {/* Criteria Detail Textarea */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    รายละเอียดเกณฑ์ประเมินหลัก (Criteria Detail) <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={newItemCriteria}
+                    onChange={(e) => setNewItemCriteria(e.target.value)}
+                    placeholder="เขียนอธิบายเกณฑ์ข้อกำหนดรังสีการแพทย์ เครื่อง หรือสถานประกอบการ..."
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {/* Success Indicator Detail Textarea */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    ตัวชี้วัดความสำเร็จ / ความคาดหวังเฉพาะ (Success Indicator)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newItemSuccess}
+                    onChange={(e) => setNewItemSuccess(e.target.value)}
+                    placeholder="การประเมินเทียบผ่าน: เช่น 'มีบันทึกรายงานครบ 100%' หรือ 'ได้รับการประเมินจากวิศวกร'"
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddItemModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-800 bg-white hover:bg-gray-150 rounded-lg border border-gray-250 cursor-pointer shadow-xs transition-colors font-sans"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCreateItem(newItemCategory, newItemSubCategory, newItemID, newItemCriteria, newItemSuccess)}
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg cursor-pointer shadow-sm hover:shadow transition-all font-sans"
+                >
+                  🚀 ยืนยันเพิ่มเกณฑ์ข้อใหม่
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ✏️ Modal สำหรับแก้ไขเกณฑ์ประเมิน / ข้อย่อย */}
+      <AnimatePresence>
+        {showEditItemModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs font-sans">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-gray-150 overflow-hidden font-sans"
+            >
+              <div className="bg-[#5A5A40] text-white p-5 flex justify-between items-center bg-amber-500">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-amber-950" />
+                  <h3 className="font-bold text-sm text-amber-950">✏️ แก้ไขข้อกำหนดเกณฑ์มาตรฐาน (Edit Criteria Details)</h3>
+                </div>
+                <button
+                  onClick={() => setShowEditItemModal(false)}
+                  className="text-amber-900/80 hover:text-amber-950 font-bold text-lg cursor-pointer px-1 outline-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto block text-left font-sans">
+                {/* Main Category */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    หมวดหมู่หลัก (Main Category)
+                  </label>
+                  <select
+                    value={editItemCategory}
+                    onChange={(e) => setEditItemCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-850 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  >
+                    {categoriesList.filter(c => c !== "ทั้งหมด").map((cat, cIdx) => (
+                      <option key={cIdx} value={cat}>{getCleanCategoryNumRef(cat)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sub Category */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    หัวข้อย่อยหรือหัวข้อตรวจสอบ (Sub Category)
+                  </label>
+                  <input
+                    type="text"
+                    value={editItemSubCategory}
+                    onChange={(e) => setEditItemSubCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {/* Item ID */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    รหัสเกณฑ์ประเมินเฉพาะ (Item ID)
+                  </label>
+                  <input
+                    type="text"
+                    value={editItemID}
+                    onChange={(e) => setEditItemID(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-850 border border-gray-300 rounded-lg text-xs font-bold font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {/* Criteria Detail */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    รายละเอียดเกณฑ์ประเมินหลัก (Criteria Detail)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editItemCriteria}
+                    onChange={(e) => setEditItemCriteria(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {/* Success Indicator */}
+                <div className="space-y-1 focus-within:text-[#5A5A40]">
+                  <label className="block text-xs font-bold text-gray-700">
+                    ตัวชี้วัดความสำเร็จ / ความคาดหวังเฉพาะ (Success Indicator)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editItemSuccess}
+                    onChange={(e) => setEditItemSuccess(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 text-gray-800 border border-gray-300 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5A5A40] focus:border-transparent transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowEditItemModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-800 bg-white hover:bg-gray-150 rounded-lg border border-gray-250 cursor-pointer shadow-xs transition-colors font-sans"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateItemDefinition(editingItemID, editItemID, editItemCategory, editItemSubCategory, editItemCriteria, editItemSuccess)}
+                  className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg cursor-pointer shadow-sm hover:shadow transition-all font-sans"
+                >
+                  💾 บันทึกเปลี่ยนเกณฑ์
                 </button>
               </div>
             </motion.div>
