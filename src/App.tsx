@@ -204,6 +204,42 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inspectorRef = useRef<HTMLDivElement>(null);
 
+  // Dynamic header visibility states
+  const [showHeader, setShowHeader] = useState<boolean>(true);
+  const [lastScrollY, setLastScrollY] = useState<number>(0);
+
+  // Scroll detection to show/hide header on mobile
+  useEffect(() => {
+    const handleScroll = () => {
+      // Ignore scroll-to-hide functionality on desktop widths (lg: width >= 1024px)
+      if (window.innerWidth >= 1024) {
+        setShowHeader(true);
+        return;
+      }
+      const currentScrollY = window.scrollY;
+
+      // Ensure that tiny scroll changes don't cause sudden jittering
+      if (Math.abs(currentScrollY - lastScrollY) < 15) {
+        return;
+      }
+
+      if (currentScrollY < 100) {
+        // Near the top: always keep header visible
+        setShowHeader(true);
+      } else if (currentScrollY > lastScrollY) {
+        // Scrolling down: hide header
+        if (showHeader) setShowHeader(false);
+      } else {
+        // Scrolling up: show header
+        if (!showHeader) setShowHeader(true);
+      }
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY, showHeader]);
+
   // Generate headers for hospital context
   const getHeaders = () => {
     const headers: Record<string, string> = {
@@ -1187,7 +1223,11 @@ export default function App() {
       )}
 
       {/* 🚀 Top Navigation / Brand */}
-      <header className="bg-[#5A5A40] text-white border-b border-[#6b6b4d] shrink-0 sticky top-0 z-50 shadow-md">
+      <motion.header 
+        animate={{ y: showHeader ? 0 : "-100%" }}
+        transition={{ duration: 0.35, ease: "easeInOut" }}
+        className="bg-[#5A5A40] text-white border-b border-[#6b6b4d] shrink-0 sticky top-0 z-50 shadow-md"
+      >
         <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8 flex flex-col gap-3.5">
           
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -1328,7 +1368,7 @@ export default function App() {
           </div>
 
         </div>
-      </header>
+      </motion.header>
 
       {/* 📊 Top Smart Infographics Dashboard Strip */}
       <section className="bg-white/90 backdrop-blur px-4 py-5 border-b border-gray-200">
@@ -1859,13 +1899,24 @@ export default function App() {
                 {/* Sliding side drawer */}
                 <motion.div
                   ref={inspectorRef}
+                  drag="x"
+                  dragConstraints={{ left: 0, right: 450 }}
+                  dragElastic={{ left: 0.05, right: 0.65 }}
+                  onDragEnd={(event, info) => {
+                    if (info.offset.x > 100 || info.velocity.x > 250) {
+                      setSelectedId(null);
+                    }
+                  }}
                   initial={{ x: "100%", opacity: 0.9 }}
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: "100%", opacity: 0.9 }}
                   transition={{ type: "spring", damping: 26, stiffness: 220 }}
-                  className="fixed top-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl z-[90] overflow-hidden flex flex-col border-l border-gray-200"
+                  className="fixed top-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl z-[90] overflow-hidden flex flex-col border-l border-gray-200 cursor-grab active:cursor-grabbing touch-pan-x"
                 >
-                  <div className="flex-1 flex flex-col min-h-0 bg-white">
+                  {/* iOS/Android-style beautiful vertical swiping indicator pill on left edge */}
+                  <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-16 bg-gray-300/60 rounded-full flex items-center justify-center select-none pointer-events-none" />
+
+                  <div className="flex-1 flex flex-col min-h-0 bg-white pl-4">
                     
                     {/* Fixed Inspector Title Banner */}
                     <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between shrink-0 font-sans">
