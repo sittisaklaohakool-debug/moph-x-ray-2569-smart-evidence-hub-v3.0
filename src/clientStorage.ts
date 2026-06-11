@@ -75,6 +75,9 @@ const sanitizeCategory = (cat: string): string => {
 const initialAssessmentsSanitized = initialAssessments.map(item => ({
   ...item,
   Main_Category: sanitizeCategory(item.Main_Category),
+  Status: "🔴 ยังไม่พร้อม" as AssessmentStatus,
+  Evidence_Link: [] as string[],
+  Last_Update: ""
 }));
 
 // Safe chunking logic for batch operations
